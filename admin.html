@@ -55,9 +55,15 @@
           </div>
         </div>
         <div class="field">
-          <label for="f-image">Image URL <small>(optional — use a hosted image link)</small></label>
-          <input type="url" id="f-image" placeholder="https://…">
+          <label for="f-image-file">Image <small>(upload a JPG or PNG, max 5MB)</small></label>
+          <input type="file" id="f-image-file" accept="image/*">
+          <small id="imageStatus" class="image-status"></small>
         </div>
+        <div class="field">
+          <label for="f-image">— or paste a hosted image URL</label>
+          <input type="url" id="f-image" placeholder="https://… or images/your-tee.jpg">
+        </div>
+        <div id="imagePreview" class="image-preview" hidden></div>
         <div class="field">
           <label for="f-description">Description</label>
           <textarea id="f-description" maxlength="800" placeholder="What makes this tee special?"></textarea>
@@ -298,6 +304,8 @@
         if (btn.dataset.action === "edit")   return startEdit(id);
         if (btn.dataset.action === "delete") return deleteItem(id);
       });
+      $("f-image-file").addEventListener("change", onImageFileSelected);
+      $("f-image").addEventListener("input", updateImagePreview);
     }
 
     function onSubmit(e) {
@@ -343,6 +351,9 @@
       $("f-available").value = t.available === false ? "false" : "true";
       $("saveBtn").textContent = "Save changes";
       $("cancelBtn").hidden = false;
+      $("f-image-file").value = "";
+      $("imageStatus").textContent = "";
+      updateImagePreview();
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
@@ -354,6 +365,8 @@
       $("f-available").value = "true";
       $("saveBtn").textContent = "Add tee";
       $("cancelBtn").hidden = true;
+      $("imageStatus").textContent = "";
+      updateImagePreview();
     }
 
     function deleteItem(id) {
@@ -426,6 +439,93 @@
         btn.textContent = "Publish to live site";
         updatePublishButton();
       }
+    }
+
+    /* ── image upload ───────────────────────────────────────────────────── */
+
+    async function onImageFileSelected(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const cfg = repoCfg();
+      if (!cfg.pat) {
+        $("setupModal").hidden = false;
+        $("imageStatus").textContent = "Connect to GitHub first (Settings) to upload images.";
+        e.target.value = "";
+        return;
+      }
+      if (!file.type.startsWith("image/")) {
+        $("imageStatus").textContent = "That doesn't look like an image file.";
+        e.target.value = "";
+        return;
+      }
+      // GitHub Contents API tops out at ~100MB but we cap much smaller for site
+      // performance — the homepage grid loads every thumbnail eagerly.
+      if (file.size > 5 * 1024 * 1024) {
+        $("imageStatus").textContent = "Image is over 5MB — please compress it first.";
+        e.target.value = "";
+        return;
+      }
+
+      $("imageStatus").textContent = "Uploading…";
+      try {
+        const url = await uploadImage(file, cfg);
+        $("f-image").value = url;
+        $("imageStatus").textContent = `✓ Uploaded as ${url}`;
+        updateImagePreview();
+      } catch (err) {
+        $("imageStatus").textContent = "Upload failed: " + err.message;
+        toast("Upload failed: " + err.message, "error");
+      }
+    }
+
+    async function uploadImage(file, cfg) {
+      // Filename: <slug>-<timestamp>.<ext> so re-uploads cache-bust naturally
+      // and image filenames stay readable in the repo.
+      const ext = (file.name.split(".").pop() || "jpg")
+        .toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "jpg";
+      const slugSrc = $("f-name").value.trim() || file.name.replace(/\.[^.]+$/, "") || "tee";
+      const slug = slugSrc.toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "tee";
+      const filename = `images/${slug}-${Date.now()}.${ext}`;
+
+      const base64 = await fileToBase64(file);
+      const r = await fetch(
+        `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${filename}`,
+        {
+          method: "PUT",
+          headers: ghHeaders(cfg),
+          body: JSON.stringify({
+            message: `Upload image ${filename}`,
+            content: base64,
+          }),
+        }
+      );
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.message || `HTTP ${r.status}`);
+      }
+      return filename;
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result || "";
+          const comma = result.indexOf(",");
+          resolve(comma >= 0 ? result.slice(comma + 1) : "");
+        };
+        reader.onerror = () => reject(reader.error || new Error("Read failed"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function updateImagePreview() {
+      const url = ($("f-image").value || "").trim();
+      const preview = $("imagePreview");
+      if (!url) { preview.hidden = true; preview.innerHTML = ""; return; }
+      preview.hidden = false;
+      preview.innerHTML = `<img src="${escapeHtml(url)}" alt="preview" onerror="this.style.opacity='0.3'">`;
     }
 
     /* ── helpers ────────────────────────────────────────────────────────── */

@@ -376,6 +376,48 @@ h3 { font-size: 1.2rem; }
   gap: 16px;
 }
 
+.field input[type="file"] {
+  font: inherit;
+  padding: 8px;
+  border: 1.5px dashed rgba(184, 147, 207, 0.7);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.field input[type="file"]::file-selector-button {
+  font: inherit;
+  font-weight: 600;
+  background: var(--garnet);
+  color: var(--cream);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+.field input[type="file"]::file-selector-button:hover { background: var(--garnet-deep); }
+
+.image-status {
+  min-height: 1.1em;
+  color: var(--ink-soft);
+}
+
+.image-preview {
+  margin: 4px 0 18px;
+  width: 160px;
+  height: 160px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--lav-soft) 0%, var(--lav-deep) 100%);
+  box-shadow: var(--shadow-soft);
+}
+.image-preview img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .tshirt-list {
   display: grid;
   gap: 14px;
