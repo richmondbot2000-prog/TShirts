@@ -1,0 +1,28 @@
+{
+  "tshirts": [
+    {
+      "id": "crystal-wings",
+      "name": "Crystal Wings",
+      "price": 28.00,
+      "description": "Soft cotton tee in lavender with the Musical Magic crystal butterfly on the front. Limited run, signed back-label.",
+      "image": "logo.jpg",
+      "available": true
+    },
+    {
+      "id": "treble-magic",
+      "name": "Treble Magic",
+      "price": 24.00,
+      "description": "Cream tee with a glittering treble clef across the chest. Pairs with everything.",
+      "image": "",
+      "available": true
+    },
+    {
+      "id": "stage-light",
+      "name": "Stage Light",
+      "price": 32.00,
+      "description": "Premium tour-style tee in deep garnet. Heavy 240gsm cotton, dropped shoulder, tagless neck.",
+      "image": "",
+      "available": false
+    }
+  ]
+}

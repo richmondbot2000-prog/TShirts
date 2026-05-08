@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Musical Magic</title>
+  <link rel="icon" href="logo.jpg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <img src="logo.jpg" alt="Musical Magic logo">
+      <div class="brand-name">Musical Magic<small>handmade tees</small></div>
+    </a>
+    <nav class="nav">
+      <a href="index.html" class="active">Shop</a>
+      <a href="admin.html">Admin</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <section class="hero">
+      <img class="hero-logo" src="logo.jpg" alt="Musical Magic">
+      <h1>Musical Magic</h1>
+      <p class="lead">Handmade tees, with a touch of sparkle.</p>
+    </section>
+
+    <section id="grid" class="grid"></section>
+    <div id="empty" class="empty" hidden>No tees in stock just yet — check back soon.</div>
+  </main>
+
+  <script>
+    fetch("tshirts.json", { cache: "no-store" })
+      .then(r => r.json())
+      .then(data => {
+        const grid = document.getElementById("grid");
+        const items = (data.tshirts || []);
+        if (items.length === 0) {
+          grid.hidden = true;
+          document.getElementById("empty").hidden = false;
+          return;
+        }
+        grid.innerHTML = items.map(renderCard).join("");
+      })
+      .catch(() => {
+        document.getElementById("grid").hidden = true;
+        document.getElementById("empty").hidden = false;
+        document.getElementById("empty").textContent =
+          "Couldn't load the shop right now. Try again in a moment.";
+      });
+
+    function renderCard(t) {
+      const initial = (t.name || "?").charAt(0).toUpperCase();
+      const img = t.image
+        ? `<img src="${escapeHtml(t.image)}" alt="${escapeHtml(t.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">`
+        + `<div class="placeholder" style="display:none">${escapeHtml(initial)}</div>`
+        : `<div class="placeholder">${escapeHtml(initial)}</div>`;
+      const unavail = !t.available
+        ? '<span class="card-unavailable">Out of stock</span>' : '';
+      return `
+        <a class="card" href="product.html?id=${encodeURIComponent(t.id)}">
+          <div class="card-image">${img}</div>
+          <div class="card-name">${escapeHtml(t.name || "")}</div>
+          <div class="card-price">$${formatPrice(t.price)}</div>
+          ${unavail}
+        </a>
+      `;
+    }
+
+    function formatPrice(p) {
+      const n = Number(p);
+      if (!isFinite(n)) return "—";
+      return n.toFixed(2);
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[c]);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Admin — Musical Magic</title>
+  <link rel="icon" href="logo.jpg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <img src="logo.jpg" alt="Musical Magic logo">
+      <div class="brand-name">Musical Magic<small>admin</small></div>
+    </a>
+    <nav class="nav">
+      <a href="index.html">Shop</a>
+      <a href="admin.html" class="active">Admin</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <h1>Admin</h1>
+    <p class="lead">Add, edit, and remove t-shirts. Click <strong>Publish</strong> when you're done to push your changes live.</p>
+
+    <div class="admin-bar">
+      <div id="status" class="admin-status"><span class="dot warn"></span> Loading…</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-ghost btn btn-sm" id="setupBtn" type="button">Settings</button>
+        <button class="btn btn-secondary btn-sm" id="discardBtn" type="button" hidden>Discard changes</button>
+        <button class="btn" id="publishBtn" type="button" disabled>Publish to live site</button>
+      </div>
+    </div>
+
+    <section class="editor">
+      <h2 id="formTitle">Add a new tee</h2>
+      <form id="form" autocomplete="off" novalidate>
+        <input type="hidden" id="editingId" value="">
+        <div class="field">
+          <label for="f-name">Name</label>
+          <input type="text" id="f-name" required maxlength="80" placeholder="e.g. Crystal Wings">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="f-price">Price (USD)</label>
+            <input type="number" id="f-price" required min="0" step="0.01" placeholder="28.00">
+          </div>
+          <div class="field">
+            <label for="f-available">Status</label>
+            <select id="f-available">
+              <option value="true">Available</option>
+              <option value="false">Out of stock</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-image">Image URL <small>(optional — use a hosted image link)</small></label>
+          <input type="url" id="f-image" placeholder="https://…">
+        </div>
+        <div class="field">
+          <label for="f-description">Description</label>
+          <textarea id="f-description" maxlength="800" placeholder="What makes this tee special?"></textarea>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" id="saveBtn" type="submit">Add tee</button>
+          <button class="btn btn-ghost" id="cancelBtn" type="button" hidden>Cancel edit</button>
+        </div>
+      </form>
+    </section>
+
+    <h2>Current tees</h2>
+    <div id="tshirtList" class="tshirt-list"></div>
+    <div id="listEmpty" class="empty" hidden>No tees yet. Add your first one above.</div>
+  </main>
+
+  <!-- Setup / GitHub token modal -->
+  <div class="modal-mask" id="setupModal" hidden>
+    <div class="modal">
+      <h2>Connect to GitHub</h2>
+      <p>To publish your changes to the live shop, you need a GitHub <strong>Personal Access Token</strong>. It's stored only in this browser.</p>
+      <ol style="color:var(--ink-soft);font-size:0.94rem;padding-left:18px;line-height:1.7">
+        <li>Open <a id="patLink" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> in a new tab.</li>
+        <li>Token name: anything (e.g. <em>Musical Magic admin</em>). Expiration: up to a year.</li>
+        <li>Repository access: <strong>Only select repositories</strong> → choose <code id="repoSlug">richmondbot2000-prog/TShirts</code>.</li>
+        <li>Repository permissions → <strong>Contents</strong>: <strong>Read and write</strong>.</li>
+        <li>Click <strong>Generate token</strong>. Copy the token and paste below.</li>
+      </ol>
+      <form id="patForm">
+        <div class="field">
+          <label for="patInput">Personal Access Token</label>
+          <input type="password" id="patInput" autocomplete="off" placeholder="github_pat_…">
+          <small>Stored in this browser only. Use "Forget token" to remove it.</small>
+        </div>
+        <div class="field">
+          <label for="ownerInput">Repo owner</label>
+          <input type="text" id="ownerInput" value="richmondbot2000-prog">
+        </div>
+        <div class="field">
+          <label for="repoInput">Repo name</label>
+          <input type="text" id="repoInput" value="TShirts">
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" type="submit">Save token</button>
+          <button class="btn btn-ghost" id="forgetBtn" type="button">Forget token</button>
+          <button class="btn btn-ghost" id="closeSetupBtn" type="button">Close</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    /* Musical Magic admin
+       ──────────────────
+       Local-first editor: every change is held in localStorage so the user
+       can iterate without round-trips. "Publish" pushes the working state
+       to GitHub (PUT /repos/:owner/:repo/contents/tshirts.json with the
+       blob's current sha) which triggers a Pages rebuild ~30s later. */
+
+    const LS_DRAFT = "mm_draft_v1";
+    const LS_REMOTE = "mm_last_published_v1";
+    const LS_PAT = "mm_pat_v1";
+    const LS_REPO = "mm_repo_v1";
+
+    const $ = id => document.getElementById(id);
+
+    let state = { tshirts: [] };
+    let lastPublished = null;       // string of last-known JSON content
+    let remoteSha = null;            // sha of tshirts.json on GitHub
+    let dirty = false;
+    let editingId = null;
+
+    /* ── boot ─────────────────────────────────────────────────────────── */
+
+    init();
+
+    async function init() {
+      restoreRepoConfig();
+
+      // Load draft (if any) or latest published JSON
+      const draft = localStorage.getItem(LS_DRAFT);
+      if (draft) {
+        try { state = JSON.parse(draft); dirty = true; }
+        catch { state = { tshirts: [] }; }
+      } else {
+        await loadFromFile();
+      }
+
+      // Always also fetch the live tshirts.json so we know what's published
+      // and have the sha for PUTs.
+      await refreshRemote();
+
+      render();
+      updateStatus();
+      updatePublishButton();
+      bindEvents();
+    }
+
+    function restoreRepoConfig() {
+      const cfg = JSON.parse(localStorage.getItem(LS_REPO) || "{}");
+      $("ownerInput").value = cfg.owner || "richmondbot2000-prog";
+      $("repoInput").value  = cfg.repo  || "TShirts";
+      $("repoSlug").textContent = `${$("ownerInput").value}/${$("repoInput").value}`;
+      $("patLink").href = "https://github.com/settings/personal-access-tokens/new";
+      const pat = localStorage.getItem(LS_PAT);
+      if (pat) $("patInput").value = pat;
+    }
+
+    async function loadFromFile() {
+      try {
+        const r = await fetch("tshirts.json", { cache: "no-store" });
+        const data = await r.json();
+        state = { tshirts: data.tshirts || [] };
+      } catch {
+        state = { tshirts: [] };
+      }
+    }
+
+    async function refreshRemote() {
+      const cfg = repoCfg();
+      if (!cfg.pat || !cfg.owner || !cfg.repo) return;
+      try {
+        const r = await fetch(
+          `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/tshirts.json`,
+          { headers: ghHeaders(cfg) }
+        );
+        if (!r.ok) return;
+        const data = await r.json();
+        remoteSha = data.sha;
+        lastPublished = atob((data.content || "").replace(/\s/g, ""));
+        localStorage.setItem(LS_REMOTE, lastPublished);
+      } catch {}
+    }
+
+    function repoCfg() {
+      return {
+        pat:   localStorage.getItem(LS_PAT) || "",
+        owner: ($("ownerInput").value || "").trim(),
+        repo:  ($("repoInput").value  || "").trim(),
+      };
+    }
+
+    function ghHeaders(cfg) {
+      return {
+        "Authorization": `Bearer ${cfg.pat}`,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      };
+    }
+
+    /* ── render ────────────────────────────────────────────────────────── */
+
+    function render() {
+      const list = $("tshirtList");
+      const empty = $("listEmpty");
+      const items = state.tshirts || [];
+
+      if (items.length === 0) {
+        list.innerHTML = "";
+        empty.hidden = false;
+        return;
+      }
+      empty.hidden = true;
+      list.innerHTML = items.map(t => {
+        const initial = escapeHtml((t.name || "?").charAt(0).toUpperCase());
+        const thumb = t.image
+          ? `<img src="${escapeHtml(t.image)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">`
+          + `<div class="placeholder" style="display:none">${initial}</div>`
+          : `<div class="placeholder">${initial}</div>`;
+        const badge = t.available
+          ? "" : '<span class="badge">Out of stock</span>';
+        return `
+          <div class="tshirt-row" data-id="${escapeHtml(t.id)}">
+            <div class="thumb">${thumb}</div>
+            <div class="meta">
+              <strong>${escapeHtml(t.name || "")}${badge}</strong>
+              <div class="sub">$${formatPrice(t.price)} · ${escapeHtml(t.id)}</div>
+            </div>
+            <div class="actions">
+              <button class="btn btn-secondary btn-sm" data-action="edit" data-id="${escapeHtml(t.id)}">Edit</button>
+              <button class="btn btn-danger btn-sm" data-action="delete" data-id="${escapeHtml(t.id)}">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function updateStatus() {
+      const dot = !repoCfg().pat ? "warn" : (dirty ? "dirty" : "ok");
+      const text = !repoCfg().pat
+        ? "Not connected to GitHub — click Settings to publish"
+        : dirty
+          ? "Unpublished changes"
+          : "Published — live site is up to date";
+      $("status").innerHTML = `<span class="dot ${dot}"></span> ${escapeHtml(text)}`;
+      $("discardBtn").hidden = !dirty;
+    }
+
+    function updatePublishButton() {
+      $("publishBtn").disabled = !dirty || !repoCfg().pat;
+    }
+
+    /* ── form ──────────────────────────────────────────────────────────── */
+
+    function bindEvents() {
+      $("form").addEventListener("submit", onSubmit);
+      $("cancelBtn").addEventListener("click", resetForm);
+      $("discardBtn").addEventListener("click", discardChanges);
+      $("publishBtn").addEventListener("click", publish);
+      $("setupBtn").addEventListener("click", () => $("setupModal").hidden = false);
+      $("closeSetupBtn").addEventListener("click", () => $("setupModal").hidden = true);
+      $("forgetBtn").addEventListener("click", () => {
+        localStorage.removeItem(LS_PAT);
+        $("patInput").value = "";
+        toast("Token removed from this browser");
+        updateStatus();
+        updatePublishButton();
+      });
+      $("patForm").addEventListener("submit", e => {
+        e.preventDefault();
+        const pat = $("patInput").value.trim();
+        if (pat) localStorage.setItem(LS_PAT, pat);
+        localStorage.setItem(LS_REPO, JSON.stringify({
+          owner: $("ownerInput").value.trim(),
+          repo: $("repoInput").value.trim(),
+        }));
+        $("repoSlug").textContent = `${$("ownerInput").value.trim()}/${$("repoInput").value.trim()}`;
+        $("setupModal").hidden = true;
+        refreshRemote().then(() => { updateStatus(); updatePublishButton(); });
+        toast("Settings saved");
+      });
+      $("tshirtList").addEventListener("click", e => {
+        const btn = e.target.closest("button[data-action]");
+        if (!btn) return;
+        const id = btn.dataset.id;
+        if (btn.dataset.action === "edit")   return startEdit(id);
+        if (btn.dataset.action === "delete") return deleteItem(id);
+      });
+    }
+
+    function onSubmit(e) {
+      e.preventDefault();
+      const name = $("f-name").value.trim();
+      const price = parseFloat($("f-price").value);
+      const description = $("f-description").value.trim();
+      const image = $("f-image").value.trim();
+      const available = $("f-available").value === "true";
+
+      if (!name || !isFinite(price) || price < 0) {
+        toast("Name and price are required", "error");
+        return;
+      }
+
+      if (editingId) {
+        const i = state.tshirts.findIndex(t => t.id === editingId);
+        if (i >= 0) {
+          state.tshirts[i] = { ...state.tshirts[i], name, price, description, image, available };
+        }
+        toast("Tee updated");
+      } else {
+        const id = makeId(name, state.tshirts);
+        state.tshirts.unshift({ id, name, price, description, image, available });
+        toast("Tee added");
+      }
+
+      resetForm();
+      markDirty();
+      render();
+    }
+
+    function startEdit(id) {
+      const t = state.tshirts.find(x => x.id === id);
+      if (!t) return;
+      editingId = id;
+      $("editingId").value = id;
+      $("formTitle").textContent = `Edit "${t.name}"`;
+      $("f-name").value = t.name || "";
+      $("f-price").value = t.price ?? "";
+      $("f-description").value = t.description || "";
+      $("f-image").value = t.image || "";
+      $("f-available").value = t.available === false ? "false" : "true";
+      $("saveBtn").textContent = "Save changes";
+      $("cancelBtn").hidden = false;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function resetForm() {
+      editingId = null;
+      $("editingId").value = "";
+      $("formTitle").textContent = "Add a new tee";
+      $("form").reset();
+      $("f-available").value = "true";
+      $("saveBtn").textContent = "Add tee";
+      $("cancelBtn").hidden = true;
+    }
+
+    function deleteItem(id) {
+      const t = state.tshirts.find(x => x.id === id);
+      if (!t) return;
+      if (!confirm(`Delete "${t.name}"? This can't be undone after publishing.`)) return;
+      state.tshirts = state.tshirts.filter(x => x.id !== id);
+      markDirty();
+      render();
+      toast("Tee removed");
+    }
+
+    function discardChanges() {
+      if (!confirm("Discard all unpublished changes?")) return;
+      localStorage.removeItem(LS_DRAFT);
+      dirty = false;
+      loadFromFile().then(() => {
+        render();
+        updateStatus();
+        updatePublishButton();
+        toast("Changes discarded");
+      });
+    }
+
+    function markDirty() {
+      dirty = true;
+      localStorage.setItem(LS_DRAFT, JSON.stringify(state));
+      updateStatus();
+      updatePublishButton();
+    }
+
+    /* ── publish ────────────────────────────────────────────────────────── */
+
+    async function publish() {
+      const cfg = repoCfg();
+      if (!cfg.pat) { $("setupModal").hidden = false; return; }
+      const btn = $("publishBtn");
+      btn.disabled = true;
+      btn.textContent = "Publishing…";
+
+      const content = JSON.stringify({ tshirts: state.tshirts }, null, 2) + "\n";
+
+      try {
+        // Ensure we have a fresh sha before PUT
+        await refreshRemote();
+        const body = {
+          message: "Update tshirts.json from admin",
+          content: btoa(unescape(encodeURIComponent(content))),
+          ...(remoteSha ? { sha: remoteSha } : {}),
+        };
+        const r = await fetch(
+          `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/tshirts.json`,
+          { method: "PUT", headers: ghHeaders(cfg), body: JSON.stringify(body) }
+        );
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.message || `HTTP ${r.status}`);
+        }
+        const data = await r.json();
+        remoteSha = data.content && data.content.sha;
+        lastPublished = content;
+        localStorage.removeItem(LS_DRAFT);
+        localStorage.setItem(LS_REMOTE, content);
+        dirty = false;
+        updateStatus();
+        toast("Published! Live site updates in ~30 seconds.", "success");
+      } catch (e) {
+        toast("Publish failed: " + e.message, "error");
+      } finally {
+        btn.textContent = "Publish to live site";
+        updatePublishButton();
+      }
+    }
+
+    /* ── helpers ────────────────────────────────────────────────────────── */
+
+    function makeId(name, existing) {
+      const base = (name || "tee").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "tee";
+      let id = base;
+      let n = 2;
+      const ids = new Set(existing.map(t => t.id));
+      while (ids.has(id)) { id = `${base}-${n++}`; }
+      return id;
+    }
+
+    function formatPrice(p) {
+      const n = Number(p);
+      return isFinite(n) ? n.toFixed(2) : "—";
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[c]);
+    }
+
+    let toastT;
+    function toast(msg, kind = "") {
+      const t = $("toast");
+      t.textContent = msg;
+      t.className = "toast show " + kind;
+      clearTimeout(toastT);
+      toastT = setTimeout(() => { t.className = "toast " + kind; }, 2400);
+    }
+  </script>
+</body>
+</html>

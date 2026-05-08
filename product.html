@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Musical Magic</title>
+  <link rel="icon" href="logo.jpg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">
+      <img src="logo.jpg" alt="Musical Magic logo">
+      <div class="brand-name">Musical Magic<small>handmade tees</small></div>
+    </a>
+    <nav class="nav">
+      <a href="index.html">Shop</a>
+      <a href="admin.html">Admin</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <a href="index.html" class="back-link">← Back to shop</a>
+    <section id="product" class="product"></section>
+    <div id="missing" class="empty" hidden>That tee doesn't exist. <a href="index.html">Back to the shop</a>.</div>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const wantId = params.get("id");
+
+    fetch("tshirts.json", { cache: "no-store" })
+      .then(r => r.json())
+      .then(data => {
+        const items = data.tshirts || [];
+        const t = items.find(x => x.id === wantId);
+        if (!t) {
+          document.getElementById("product").hidden = true;
+          document.getElementById("missing").hidden = false;
+          return;
+        }
+        render(t);
+        document.title = t.name + " — Musical Magic";
+      })
+      .catch(() => {
+        document.getElementById("product").hidden = true;
+        document.getElementById("missing").hidden = false;
+      });
+
+    function render(t) {
+      const initial = (t.name || "?").charAt(0).toUpperCase();
+      const img = t.image
+        ? `<img src="${escapeHtml(t.image)}" alt="${escapeHtml(t.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">`
+        + `<div class="placeholder" style="display:none">${escapeHtml(initial)}</div>`
+        : `<div class="placeholder">${escapeHtml(initial)}</div>`;
+      const cta = t.available
+        ? `<a class="btn" href="mailto:?subject=${encodeURIComponent('Order: ' + t.name)}&body=${encodeURIComponent("I'd like to order the " + t.name + " tee.")}">Email to order</a>`
+        : `<button class="btn" disabled style="opacity:.5;cursor:not-allowed">Out of stock</button>`;
+
+      document.getElementById("product").innerHTML = `
+        <div class="product-image">${img}</div>
+        <div class="product-info">
+          <h1>${escapeHtml(t.name || "")}</h1>
+          <div class="product-price">$${formatPrice(t.price)}</div>
+          <p class="product-description">${escapeHtml(t.description || "")}</p>
+          ${cta}
+        </div>
+      `;
+    }
+
+    function formatPrice(p) {
+      const n = Number(p);
+      if (!isFinite(n)) return "—";
+      return n.toFixed(2);
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[c]);
+    }
+  </script>
+</body>
+</html>
