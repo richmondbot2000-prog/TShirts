@@ -1,6 +1,24 @@
 {
   "tshirts": [
     {
+      "id": "west-side-story",
+      "name": "West Side Story",
+      "price": 32.99,
+      "description": "All of my life, it's like I'm always just about to fall off the edge of the world's tallest building. I stopped falling the second I saw you. (That's me talking to this TShirt that Juliette Benamor designed)",
+      "images": [
+        "images/tee-1778263247895.jpg",
+        "images/tee-1778263266684.jpg",
+        "images/tee-1778263279345.jpg"
+      ],
+      "sizes": {
+        "S": true,
+        "M": true,
+        "L": true,
+        "XL": true,
+        "XXL": true
+      }
+    },
+    {
       "id": "hairspray",
       "name": "Hairspray",
       "price": 33,
