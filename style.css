@@ -671,6 +671,26 @@ h3 { font-size: 1.2rem; }
 .toast.error { background: var(--garnet-deep); }
 .toast.success { background: #2ea96f; }
 
+/* ADMIN FOOTER LINK
+   Deliberately near-invisible — sits at the bottom of every public page,
+   coloured close to the page background so casual visitors don't notice it.
+   The admin still finds it because they know where to look. */
+.admin-footer {
+  text-align: center;
+  padding: 32px 16px 24px;
+  margin-top: 48px;
+}
+.admin-footer a {
+  font-size: 0.78rem;
+  color: rgba(43, 26, 58, 0.25);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.admin-footer a:hover {
+  color: rgba(43, 26, 58, 0.55);
+  text-decoration: none;
+}
+
 /* RESPONSIVE */
 @media (max-width: 720px) {
   .product { grid-template-columns: 1fr; gap: 24px; }
