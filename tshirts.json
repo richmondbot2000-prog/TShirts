@@ -1,6 +1,24 @@
 {
   "tshirts": [
     {
+      "id": "hairspray",
+      "name": "Hairspray",
+      "price": 20,
+      "description": "HAIRSPRAY!",
+      "images": [
+        "images/hairspray-1778236203581.jpg",
+        "images/hairspray-1778236217563.jpg",
+        "images/hairspray-1778236228762.jpg"
+      ],
+      "sizes": {
+        "S": true,
+        "M": true,
+        "L": true,
+        "XL": true,
+        "XXL": true
+      }
+    },
+    {
       "id": "wicked",
       "name": "Wicked",
       "price": 20,
