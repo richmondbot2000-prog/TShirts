@@ -28,6 +28,7 @@
       <div id="status" class="admin-status"><span class="dot warn"></span> Loading…</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn-ghost btn btn-sm" id="setupBtn" type="button">Settings</button>
+        <button class="btn-ghost btn btn-sm" id="cleanupBtn" type="button">Tidy up unused images</button>
         <button class="btn btn-secondary btn-sm" id="discardBtn" type="button" hidden>Discard changes</button>
         <button class="btn" id="publishBtn" type="button" disabled>Publish to live site</button>
       </div>
@@ -306,6 +307,7 @@
       });
       $("f-image-file").addEventListener("change", onImageFileSelected);
       $("f-image").addEventListener("input", updateImagePreview);
+      $("cleanupBtn").addEventListener("click", cleanupUnreferencedImages);
     }
 
     function onSubmit(e) {
@@ -441,7 +443,7 @@
       }
     }
 
-    /* ── image upload ───────────────────────────────────────────────────── */
+    /* ── image upload + resize ──────────────────────────────────────────── */
 
     async function onImageFileSelected(e) {
       const file = e.target.files[0];
@@ -458,19 +460,32 @@
         e.target.value = "";
         return;
       }
-      // GitHub Contents API tops out at ~100MB but we cap much smaller for site
-      // performance — the homepage grid loads every thumbnail eagerly.
-      if (file.size > 5 * 1024 * 1024) {
-        $("imageStatus").textContent = "Image is over 5MB — please compress it first.";
+      // 25MB sanity cap on input — covers any normal phone photo.
+      // We resize down to ≤1200px / JPEG-quality 0.85 below.
+      if (file.size > 25 * 1024 * 1024) {
+        $("imageStatus").textContent = "Image is over 25MB — please pick a smaller file.";
         e.target.value = "";
         return;
       }
 
-      $("imageStatus").textContent = "Uploading…";
+      $("imageStatus").textContent = "Processing…";
+      let working, ext, resizeNote = "";
       try {
-        const url = await uploadImage(file, cfg);
+        const result = await maybeResizeImage(file);
+        working = result.blob;
+        ext = result.ext;
+        resizeNote = result.note;
+      } catch (err) {
+        $("imageStatus").textContent = "Couldn't process image: " + err.message;
+        return;
+      }
+
+      $("imageStatus").textContent = "Uploading…" + (resizeNote ? " (" + resizeNote + ")" : "");
+      try {
+        const url = await uploadImage(working, ext, cfg);
         $("f-image").value = url;
-        $("imageStatus").textContent = `✓ Uploaded as ${url}`;
+        $("imageStatus").textContent =
+          `✓ Uploaded as ${url}` + (resizeNote ? " (" + resizeNote + ")" : "");
         updateImagePreview();
       } catch (err) {
         $("imageStatus").textContent = "Upload failed: " + err.message;
@@ -478,17 +493,66 @@
       }
     }
 
-    async function uploadImage(file, cfg) {
-      // Filename: <slug>-<timestamp>.<ext> so re-uploads cache-bust naturally
-      // and image filenames stay readable in the repo.
-      const ext = (file.name.split(".").pop() || "jpg")
+    /* Resize on the client BEFORE upload so phone-camera 8 MB JPEGs become
+       300–500 KB without the user having to think about it. Skip resize when
+       the image is already small AND modestly sized — no point re-encoding
+       an already-optimised asset. Returns { blob, ext, note }. */
+    async function maybeResizeImage(file) {
+      let img;
+      try { img = await loadImage(file); }
+      catch { return { blob: file, ext: extOf(file.name), note: "" }; }
+
+      const maxEdge = Math.max(img.naturalWidth, img.naturalHeight);
+      if (file.size <= 800 * 1024 && maxEdge <= 1600) {
+        return { blob: file, ext: extOf(file.name), note: "" };
+      }
+
+      const blob = await canvasResize(img, 1200, "image/jpeg", 0.85);
+      const before = (file.size / 1024).toFixed(0);
+      const after  = (blob.size / 1024).toFixed(0);
+      const note = `resized ${img.naturalWidth}×${img.naturalHeight} → max 1200px, ${before} KB → ${after} KB`;
+      return { blob, ext: "jpg", note };
+    }
+
+    function loadImage(blob) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload  = () => { URL.revokeObjectURL(url); resolve(img); };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("decode failed")); };
+        img.src = url;
+      });
+    }
+
+    function canvasResize(img, maxEdge, mime, quality) {
+      const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.round(img.naturalWidth  * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, w, h);
+      return new Promise((resolve, reject) => {
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error("encoding failed")), mime, quality);
+      });
+    }
+
+    function extOf(filename) {
+      return ((filename || "").split(".").pop() || "jpg")
         .toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "jpg";
-      const slugSrc = $("f-name").value.trim() || file.name.replace(/\.[^.]+$/, "") || "tee";
+    }
+
+    async function uploadImage(blob, ext, cfg) {
+      // Filename: <slug>-<timestamp>.<ext> — readable in the repo + cache-busts
+      // when an image is replaced for the same tee.
+      const slugSrc = $("f-name").value.trim() || "tee";
       const slug = slugSrc.toLowerCase()
         .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "tee";
       const filename = `images/${slug}-${Date.now()}.${ext}`;
 
-      const base64 = await fileToBase64(file);
+      const base64 = await blobToBase64(blob);
       const r = await fetch(
         `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${filename}`,
         {
@@ -507,7 +571,7 @@
       return filename;
     }
 
-    function fileToBase64(file) {
+    function blobToBase64(blob) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -516,7 +580,7 @@
           resolve(comma >= 0 ? result.slice(comma + 1) : "");
         };
         reader.onerror = () => reject(reader.error || new Error("Read failed"));
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(blob);
       });
     }
 
@@ -526,6 +590,79 @@
       if (!url) { preview.hidden = true; preview.innerHTML = ""; return; }
       preview.hidden = false;
       preview.innerHTML = `<img src="${escapeHtml(url)}" alt="preview" onerror="this.style.opacity='0.3'">`;
+    }
+
+    /* ── cleanup: prune unused images in the repo ───────────────────────── */
+
+    async function cleanupUnreferencedImages() {
+      const cfg = repoCfg();
+      if (!cfg.pat) {
+        $("setupModal").hidden = false;
+        toast("Connect to GitHub first (Settings) to tidy up images.", "error");
+        return;
+      }
+
+      // "Referenced" = anything pointed at by a saved tee OR the in-progress
+      // form (so an image just uploaded for a tee being edited isn't deleted).
+      const referenced = new Set();
+      for (const t of state.tshirts) {
+        if (t.image) referenced.add(t.image);
+      }
+      const formImage = ($("f-image").value || "").trim();
+      if (formImage) referenced.add(formImage);
+
+      let images;
+      try {
+        images = await listImagesInRepo(cfg);
+      } catch (e) {
+        return toast("Couldn't list images: " + e.message, "error");
+      }
+
+      const orphans = images.filter(img => !referenced.has(img.path));
+      if (orphans.length === 0) {
+        return toast("Nothing to tidy up — every image is in use.", "success");
+      }
+
+      const namesPreview = orphans.slice(0, 10).map(o => "  • " + o.path).join("\n");
+      const more = orphans.length > 10 ? `\n  …and ${orphans.length - 10} more` : "";
+      const ok = confirm(
+        `Delete ${orphans.length} unused image(s) from the repo?\n\n${namesPreview}${more}\n\nThis cannot be undone.`
+      );
+      if (!ok) return;
+
+      let deleted = 0, failed = 0;
+      toast(`Deleting ${orphans.length} image(s)…`);
+      for (const img of orphans) {
+        try {
+          const r = await fetch(
+            `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${img.path}`,
+            {
+              method: "DELETE",
+              headers: ghHeaders(cfg),
+              body: JSON.stringify({
+                message: `Cleanup unused image ${img.path}`,
+                sha: img.sha,
+              }),
+            }
+          );
+          if (r.ok) deleted++; else failed++;
+        } catch { failed++; }
+      }
+      const msg = `Deleted ${deleted} image(s)` + (failed ? `, ${failed} failed` : "") + ".";
+      toast(msg, failed ? "error" : "success");
+    }
+
+    async function listImagesInRepo(cfg) {
+      const r = await fetch(
+        `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/images`,
+        { headers: ghHeaders(cfg) }
+      );
+      if (r.status === 404) return [];   // no images/ folder yet — nothing to tidy
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      return (Array.isArray(data) ? data : [])
+        .filter(f => f.type === "file")
+        .map(f => ({ name: f.name, path: f.path, sha: f.sha }));
     }
 
     /* ── helpers ────────────────────────────────────────────────────────── */
