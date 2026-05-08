@@ -3,7 +3,7 @@
     {
       "id": "hairspray",
       "name": "Hairspray",
-      "price": 20,
+      "price": 33,
       "description": "HAIRSPRAY! It's Hairspray. It's the best one!",
       "images": [
         "images/hairspray-1778236318560.jpg",
@@ -21,7 +21,7 @@
     {
       "id": "wicked",
       "name": "Wicked",
-      "price": 20,
+      "price": 33,
       "description": "Wicked tribute T Shirt designed by Juliette Benamor",
       "images": [
         "images/tee-1778235285250.jpg",
@@ -39,7 +39,7 @@
     {
       "id": "hamilton-t-shirt",
       "name": "Hamilton T Shirt",
-      "price": 20,
+      "price": 33,
       "description": "Beautiful Hamilton tribute Tshirt designed by Juliette Benamor",
       "images": [
         "images/hamilton-t-shirt-1778233531357.jpg",
