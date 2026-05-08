@@ -42,29 +42,28 @@
           <label for="f-name">Name</label>
           <input type="text" id="f-name" required maxlength="80" placeholder="e.g. Crystal Wings">
         </div>
-        <div class="field-row">
-          <div class="field">
-            <label for="f-price">Price (GBP)</label>
-            <input type="number" id="f-price" required min="0" step="0.01" placeholder="28.00">
-          </div>
-          <div class="field">
-            <label for="f-available">Status</label>
-            <select id="f-available">
-              <option value="true">Available</option>
-              <option value="false">Out of stock</option>
-            </select>
+        <div class="field">
+          <label for="f-price">Price (GBP)</label>
+          <input type="number" id="f-price" required min="0" step="0.01" placeholder="28.00">
+        </div>
+        <div class="field">
+          <label>Sizes available <small>(tick the sizes you have in stock)</small></label>
+          <div class="size-checks">
+            <label class="size-check"><input type="checkbox" id="size-S"   checked> S</label>
+            <label class="size-check"><input type="checkbox" id="size-M"   checked> M</label>
+            <label class="size-check"><input type="checkbox" id="size-L"   checked> L</label>
+            <label class="size-check"><input type="checkbox" id="size-XL"  checked> XL</label>
+            <label class="size-check"><input type="checkbox" id="size-XXL" checked> XXL</label>
           </div>
         </div>
         <div class="field">
-          <label for="f-image-file">Image <small>(upload a JPG or PNG, max 5MB)</small></label>
-          <input type="file" id="f-image-file" accept="image/*">
+          <label>Images <small>(up to 5 — first is the cover, second shows on hover)</small></label>
+          <div id="imageRows" class="image-rows"></div>
+          <div style="margin-top:10px">
+            <button type="button" id="addImageBtn" class="btn btn-secondary btn-sm">+ Add image</button>
+          </div>
           <small id="imageStatus" class="image-status"></small>
         </div>
-        <div class="field">
-          <label for="f-image">— or paste a hosted image URL</label>
-          <input type="url" id="f-image" placeholder="https://… or images/your-tee.jpg">
-        </div>
-        <div id="imagePreview" class="image-preview" hidden></div>
         <div class="field">
           <label for="f-description">Description</label>
           <textarea id="f-description" maxlength="800" placeholder="What makes this tee special?"></textarea>
@@ -133,11 +132,14 @@
 
     const $ = id => document.getElementById(id);
 
+    const SIZE_ORDER = ["S","M","L","XL","XXL"];
+
     let state = { tshirts: [] };
     let lastPublished = null;       // string of last-known JSON content
     let remoteSha = null;            // sha of tshirts.json on GitHub
     let dirty = false;
     let editingId = null;
+    let formImages = [""];           // working list of image URLs (length 0..5)
 
     /* ── boot ─────────────────────────────────────────────────────────── */
 
@@ -160,6 +162,7 @@
       await refreshRemote();
 
       render();
+      renderImageRows();
       updateStatus();
       updatePublishButton();
       bindEvents();
@@ -230,20 +233,23 @@
         return;
       }
       empty.hidden = true;
-      list.innerHTML = items.map(t => {
+      list.innerHTML = items.map(raw => {
+        const t = normalize(raw);
         const initial = escapeHtml((t.name || "?").charAt(0).toUpperCase());
-        const thumb = t.image
-          ? `<img src="${escapeHtml(t.image)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">`
+        const cover = t.images[0] || "";
+        const thumb = cover
+          ? `<img src="${escapeHtml(cover)}" alt="" onerror="this.style.display='none';this.parentElement.querySelector('.placeholder').style.display='flex';">`
           + `<div class="placeholder" style="display:none">${initial}</div>`
           : `<div class="placeholder">${initial}</div>`;
-        const badge = t.available
+        const badge = t.anyAvailable
           ? "" : '<span class="badge">Out of stock</span>';
+        const sizeSummary = SIZE_ORDER.filter(s => t.sizes[s]).join(", ") || "no sizes";
         return `
           <div class="tshirt-row" data-id="${escapeHtml(t.id)}">
             <div class="thumb">${thumb}</div>
             <div class="meta">
               <strong>${escapeHtml(t.name || "")}${badge}</strong>
-              <div class="sub">£${formatPrice(t.price)} · ${escapeHtml(t.id)}</div>
+              <div class="sub">£${formatPrice(t.price)} · sizes: ${escapeHtml(sizeSummary)} · ${t.images.length} image${t.images.length === 1 ? "" : "s"}</div>
             </div>
             <div class="actions">
               <button class="btn btn-secondary btn-sm" data-action="edit" data-id="${escapeHtml(t.id)}">Edit</button>
@@ -252,6 +258,24 @@
           </div>
         `;
       }).join("");
+    }
+
+    function normalize(t) {
+      const images = (Array.isArray(t.images) && t.images.length)
+        ? t.images.filter(x => x)
+        : (t.image ? [t.image] : []);
+      let sizes;
+      if (t.sizes && typeof t.sizes === "object") {
+        sizes = {
+          S:   !!t.sizes.S,   M:   !!t.sizes.M,   L:   !!t.sizes.L,
+          XL:  !!t.sizes.XL,  XXL: !!t.sizes.XXL,
+        };
+      } else {
+        const a = t.available !== false;
+        sizes = { S: a, M: a, L: a, XL: a, XXL: a };
+      }
+      const anyAvailable = Object.values(sizes).some(v => v);
+      return { ...t, images, sizes, anyAvailable };
     }
 
     function updateStatus() {
@@ -305,8 +329,36 @@
         if (btn.dataset.action === "edit")   return startEdit(id);
         if (btn.dataset.action === "delete") return deleteItem(id);
       });
-      $("f-image-file").addEventListener("change", onImageFileSelected);
-      $("f-image").addEventListener("input", updateImagePreview);
+
+      // Image-row event delegation — clicks/inputs/changes inside #imageRows
+      // route to the right slot via data-idx attributes.
+      $("imageRows").addEventListener("click", e => {
+        const upload = e.target.closest(".image-row-upload");
+        if (upload) {
+          const idx = +upload.dataset.idx;
+          $("imageRows").querySelector(`.image-row-file[data-idx="${idx}"]`).click();
+          return;
+        }
+        const remove = e.target.closest(".image-row-remove");
+        if (remove) {
+          const idx = +remove.dataset.idx;
+          formImages.splice(idx, 1);
+          if (formImages.length === 0) formImages = [""];
+          renderImageRows();
+          return;
+        }
+      });
+      $("imageRows").addEventListener("input", e => {
+        const url = e.target.closest(".image-row-url");
+        if (url) formImages[+url.dataset.idx] = url.value;
+      });
+      $("imageRows").addEventListener("change", e => {
+        const file = e.target.closest(".image-row-file");
+        if (file && file.files[0]) onSlotFileSelected(+file.dataset.idx, file);
+      });
+      $("addImageBtn").addEventListener("click", () => {
+        if (formImages.length < 5) { formImages.push(""); renderImageRows(); }
+      });
       $("cleanupBtn").addEventListener("click", cleanupUnreferencedImages);
     }
 
@@ -315,8 +367,14 @@
       const name = $("f-name").value.trim();
       const price = parseFloat($("f-price").value);
       const description = $("f-description").value.trim();
-      const image = $("f-image").value.trim();
-      const available = $("f-available").value === "true";
+      const sizes = {
+        S:   $("size-S").checked,
+        M:   $("size-M").checked,
+        L:   $("size-L").checked,
+        XL:  $("size-XL").checked,
+        XXL: $("size-XXL").checked,
+      };
+      const images = formImages.map(s => (s || "").trim()).filter(Boolean);
 
       if (!name || !isFinite(price) || price < 0) {
         toast("Name and price are required", "error");
@@ -326,12 +384,13 @@
       if (editingId) {
         const i = state.tshirts.findIndex(t => t.id === editingId);
         if (i >= 0) {
-          state.tshirts[i] = { ...state.tshirts[i], name, price, description, image, available };
+          // Replace with the new-schema shape — drops legacy `image` + `available`.
+          state.tshirts[i] = { id: state.tshirts[i].id, name, price, description, images, sizes };
         }
         toast("Tee updated");
       } else {
         const id = makeId(name, state.tshirts);
-        state.tshirts.unshift({ id, name, price, description, image, available });
+        state.tshirts.unshift({ id, name, price, description, images, sizes });
         toast("Tee added");
       }
 
@@ -341,21 +400,21 @@
     }
 
     function startEdit(id) {
-      const t = state.tshirts.find(x => x.id === id);
-      if (!t) return;
+      const raw = state.tshirts.find(x => x.id === id);
+      if (!raw) return;
+      const t = normalize(raw);
       editingId = id;
       $("editingId").value = id;
       $("formTitle").textContent = `Edit "${t.name}"`;
       $("f-name").value = t.name || "";
       $("f-price").value = t.price ?? "";
       $("f-description").value = t.description || "";
-      $("f-image").value = t.image || "";
-      $("f-available").value = t.available === false ? "false" : "true";
+      SIZE_ORDER.forEach(s => { $(`size-${s}`).checked = t.sizes[s]; });
+      formImages = t.images.length ? [...t.images] : [""];
+      renderImageRows();
       $("saveBtn").textContent = "Save changes";
       $("cancelBtn").hidden = false;
-      $("f-image-file").value = "";
       $("imageStatus").textContent = "";
-      updateImagePreview();
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
@@ -364,11 +423,12 @@
       $("editingId").value = "";
       $("formTitle").textContent = "Add a new tee";
       $("form").reset();
-      $("f-available").value = "true";
+      SIZE_ORDER.forEach(s => { $(`size-${s}`).checked = true; });
+      formImages = [""];
+      renderImageRows();
       $("saveBtn").textContent = "Add tee";
       $("cancelBtn").hidden = true;
       $("imageStatus").textContent = "";
-      updateImagePreview();
     }
 
     function deleteItem(id) {
@@ -443,32 +503,53 @@
       }
     }
 
-    /* ── image upload + resize ──────────────────────────────────────────── */
+    /* ── image rows: render + per-slot upload + resize ──────────────────── */
 
-    async function onImageFileSelected(e) {
-      const file = e.target.files[0];
+    function renderImageRows() {
+      const container = $("imageRows");
+      container.innerHTML = formImages.map((url, i) => `
+        <div class="image-row" data-idx="${i}">
+          <div class="image-row-thumb">
+            ${url
+              ? `<img src="${escapeHtml(url)}" alt="" onerror="this.style.opacity='0.3'">`
+              : `<span class="image-row-empty">${i + 1}</span>`}
+          </div>
+          <div class="image-row-controls">
+            <input type="url" class="image-row-url" placeholder="paste an image URL" value="${escapeHtml(url || "")}" data-idx="${i}">
+            <input type="file" class="image-row-file" accept="image/*" data-idx="${i}" hidden>
+            <div class="image-row-buttons">
+              <button type="button" class="btn btn-secondary btn-sm image-row-upload" data-idx="${i}">${url ? "Replace" : "Upload"}</button>
+              <button type="button" class="btn btn-danger btn-sm image-row-remove" data-idx="${i}">Remove</button>
+            </div>
+          </div>
+        </div>
+      `).join("");
+      $("addImageBtn").hidden = formImages.length >= 5;
+    }
+
+    async function onSlotFileSelected(idx, fileInput) {
+      const file = fileInput.files[0];
       if (!file) return;
       const cfg = repoCfg();
       if (!cfg.pat) {
         $("setupModal").hidden = false;
         $("imageStatus").textContent = "Connect to GitHub first (Settings) to upload images.";
-        e.target.value = "";
+        fileInput.value = "";
         return;
       }
       if (!file.type.startsWith("image/")) {
         $("imageStatus").textContent = "That doesn't look like an image file.";
-        e.target.value = "";
+        fileInput.value = "";
         return;
       }
-      // 25MB sanity cap on input — covers any normal phone photo.
-      // We resize down to ≤1200px / JPEG-quality 0.85 below.
+      // 25MB sanity cap on input — we resize down anyway.
       if (file.size > 25 * 1024 * 1024) {
         $("imageStatus").textContent = "Image is over 25MB — please pick a smaller file.";
-        e.target.value = "";
+        fileInput.value = "";
         return;
       }
 
-      $("imageStatus").textContent = "Processing…";
+      $("imageStatus").textContent = `Slot ${idx + 1}: processing…`;
       let working, ext, resizeNote = "";
       try {
         const result = await maybeResizeImage(file);
@@ -476,20 +557,21 @@
         ext = result.ext;
         resizeNote = result.note;
       } catch (err) {
-        $("imageStatus").textContent = "Couldn't process image: " + err.message;
+        $("imageStatus").textContent = `Slot ${idx + 1}: couldn't process image — ${err.message}`;
         return;
       }
 
-      $("imageStatus").textContent = "Uploading…" + (resizeNote ? " (" + resizeNote + ")" : "");
+      $("imageStatus").textContent = `Slot ${idx + 1}: uploading…` + (resizeNote ? ` (${resizeNote})` : "");
       try {
         const url = await uploadImage(working, ext, cfg);
-        $("f-image").value = url;
-        $("imageStatus").textContent =
-          `✓ Uploaded as ${url}` + (resizeNote ? " (" + resizeNote + ")" : "");
-        updateImagePreview();
+        formImages[idx] = url;
+        renderImageRows();
+        $("imageStatus").textContent = `✓ Slot ${idx + 1}: uploaded as ${url}` + (resizeNote ? ` (${resizeNote})` : "");
       } catch (err) {
-        $("imageStatus").textContent = "Upload failed: " + err.message;
+        $("imageStatus").textContent = `Slot ${idx + 1}: upload failed — ${err.message}`;
         toast("Upload failed: " + err.message, "error");
+      } finally {
+        fileInput.value = "";
       }
     }
 
@@ -584,14 +666,6 @@
       });
     }
 
-    function updateImagePreview() {
-      const url = ($("f-image").value || "").trim();
-      const preview = $("imagePreview");
-      if (!url) { preview.hidden = true; preview.innerHTML = ""; return; }
-      preview.hidden = false;
-      preview.innerHTML = `<img src="${escapeHtml(url)}" alt="preview" onerror="this.style.opacity='0.3'">`;
-    }
-
     /* ── cleanup: prune unused images in the repo ───────────────────────── */
 
     async function cleanupUnreferencedImages() {
@@ -605,11 +679,13 @@
       // "Referenced" = anything pointed at by a saved tee OR the in-progress
       // form (so an image just uploaded for a tee being edited isn't deleted).
       const referenced = new Set();
-      for (const t of state.tshirts) {
-        if (t.image) referenced.add(t.image);
+      for (const raw of state.tshirts) {
+        const t = normalize(raw);
+        for (const img of t.images) referenced.add(img);
       }
-      const formImage = ($("f-image").value || "").trim();
-      if (formImage) referenced.add(formImage);
+      for (const url of formImages) {
+        if (url) referenced.add(url);
+      }
 
       let images;
       try {

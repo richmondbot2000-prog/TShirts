@@ -48,25 +48,109 @@
         document.getElementById("missing").hidden = false;
       });
 
+    const SIZE_ORDER = ["S","M","L","XL","XXL"];
+
     function render(t) {
+      t = normalize(t);
       const initial = (t.name || "?").charAt(0).toUpperCase();
-      const img = t.image
-        ? `<img src="${escapeHtml(t.image)}" alt="${escapeHtml(t.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">`
-        + `<div class="placeholder" style="display:none">${escapeHtml(initial)}</div>`
-        : `<div class="placeholder">${escapeHtml(initial)}</div>`;
-      const cta = t.available
-        ? `<a class="btn" href="mailto:?subject=${encodeURIComponent('Order: ' + t.name)}&body=${encodeURIComponent("I'd like to order the " + t.name + " tee.")}">Email to order</a>`
-        : `<button class="btn" disabled style="opacity:.5;cursor:not-allowed">Out of stock</button>`;
+
+      // Gallery: hero image + thumbnail strip if there's more than one.
+      let galleryHtml;
+      if (t.images.length > 0) {
+        const thumbs = t.images.length > 1 ? `
+          <div class="product-thumbs">
+            ${t.images.map((img, i) => `
+              <button class="product-thumb${i === 0 ? ' active' : ''}" data-img="${escapeHtml(img)}" type="button" aria-label="Image ${i + 1}">
+                <img src="${escapeHtml(img)}" alt="">
+              </button>
+            `).join("")}
+          </div>` : "";
+        galleryHtml = `
+          <div class="product-gallery">
+            <div class="product-image">
+              <img id="heroImg" src="${escapeHtml(t.images[0])}" alt="${escapeHtml(t.name)}">
+            </div>
+            ${thumbs}
+          </div>`;
+      } else {
+        galleryHtml = `<div class="product-image"><div class="placeholder">${escapeHtml(initial)}</div></div>`;
+      }
+
+      // Size picker — every size shown, unavailable ones disabled + struck through.
+      const sizesHtml = t.anyAvailable ? `
+        <div class="size-picker">
+          <div class="size-picker-label">Size</div>
+          <div class="size-buttons">
+            ${SIZE_ORDER.map(s => `
+              <button class="size-btn${t.sizes[s] ? "" : " unavailable"}"
+                      data-size="${s}"
+                      ${t.sizes[s] ? "" : "disabled"}
+                      type="button"
+                      aria-label="Size ${s}${t.sizes[s] ? "" : " (out of stock)"}">${s}</button>
+            `).join("")}
+          </div>
+        </div>` : `<div class="out-of-stock-msg">Currently out of stock — check back soon.</div>`;
+
+      const ctaHtml = t.anyAvailable
+        ? `<button class="btn" id="orderBtn" type="button" disabled>Pick a size to order</button>` : "";
 
       document.getElementById("product").innerHTML = `
-        <div class="product-image">${img}</div>
+        ${galleryHtml}
         <div class="product-info">
           <h1>${escapeHtml(t.name || "")}</h1>
           <div class="product-price">£${formatPrice(t.price)}</div>
           <p class="product-description">${escapeHtml(t.description || "")}</p>
-          ${cta}
+          ${sizesHtml}
+          ${ctaHtml}
         </div>
       `;
+
+      // Wire the gallery thumbnails — click swaps the hero image.
+      document.querySelectorAll(".product-thumb").forEach(btn => {
+        btn.addEventListener("click", () => {
+          document.getElementById("heroImg").src = btn.dataset.img;
+          document.querySelectorAll(".product-thumb").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+        });
+      });
+
+      // Wire the size picker — click selects, enabling the order button + size-aware mailto.
+      let selectedSize = null;
+      document.querySelectorAll(".size-btn:not(.unavailable)").forEach(btn => {
+        btn.addEventListener("click", () => {
+          selectedSize = btn.dataset.size;
+          document.querySelectorAll(".size-btn").forEach(b => b.classList.remove("selected"));
+          btn.classList.add("selected");
+          const orderBtn = document.getElementById("orderBtn");
+          if (orderBtn) {
+            orderBtn.disabled = false;
+            orderBtn.textContent = `Email to order — size ${selectedSize}`;
+            orderBtn.onclick = () => {
+              const subject = `Order: ${t.name} (size ${selectedSize})`;
+              const body = `I'd like to order the ${t.name} tee in size ${selectedSize}.`;
+              window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            };
+          }
+        });
+      });
+    }
+
+    function normalize(t) {
+      const images = (Array.isArray(t.images) && t.images.length)
+        ? t.images.filter(x => x)
+        : (t.image ? [t.image] : []);
+      let sizes;
+      if (t.sizes && typeof t.sizes === "object") {
+        sizes = {
+          S:   !!t.sizes.S,   M:   !!t.sizes.M,   L:   !!t.sizes.L,
+          XL:  !!t.sizes.XL,  XXL: !!t.sizes.XXL,
+        };
+      } else {
+        const a = t.available !== false;
+        sizes = { S: a, M: a, L: a, XL: a, XXL: a };
+      }
+      const anyAvailable = Object.values(sizes).some(v => v);
+      return { ...t, images, sizes, anyAvailable };
     }
 
     function formatPrice(p) {

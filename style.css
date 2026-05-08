@@ -169,17 +169,28 @@ h3 { font-size: 1.2rem; }
   justify-content: center;
   position: relative;
 }
-.card-image img {
+.card-image-primary,
+.card-image-hover {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: opacity 0.25s ease;
 }
+.card-image-hover { opacity: 0; }
+.card:hover .card-image-hover { opacity: 1; }
 .card-image .placeholder {
   font-family: 'Fredoka', sans-serif;
   font-size: 3rem;
   font-weight: 700;
   color: rgba(251, 246, 232, 0.85);
   letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 .card-name {
   font-family: 'Fredoka', sans-serif;
@@ -213,6 +224,11 @@ h3 { font-size: 1.2rem; }
   gap: 48px;
   align-items: start;
 }
+.product-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 .product-image {
   aspect-ratio: 1;
   border-radius: 20px;
@@ -233,6 +249,74 @@ h3 { font-size: 1.2rem; }
   font-size: 7rem;
   font-weight: 700;
   color: rgba(251, 246, 232, 0.85);
+}
+.product-thumbs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.product-thumb {
+  width: 72px; height: 72px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--lav-soft);
+  transition: border-color 0.15s, transform 0.15s;
+}
+.product-thumb:hover { transform: translateY(-2px); }
+.product-thumb.active { border-color: var(--garnet); }
+.product-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+/* SIZE PICKER (product page) */
+.size-picker { margin: 8px 0 24px; }
+.size-picker-label {
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+}
+.size-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.size-btn {
+  font: inherit;
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  min-width: 52px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--garnet);
+  border-radius: 10px;
+  background: var(--cream);
+  color: var(--garnet);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+.size-btn:hover { background: var(--cream-soft); }
+.size-btn.selected {
+  background: var(--garnet);
+  color: var(--cream);
+  transform: translateY(-1px);
+}
+.size-btn.unavailable {
+  border-color: rgba(43, 26, 58, 0.18);
+  color: rgba(43, 26, 58, 0.35);
+  background: transparent;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+.out-of-stock-msg {
+  background: rgba(110, 38, 36, 0.08);
+  color: var(--garnet-deep);
+  font-weight: 600;
+  padding: 12px 16px;
+  border-radius: 10px;
+  margin-bottom: 18px;
 }
 .product-info h1 { font-size: 2.4rem; margin-bottom: 0.1em; }
 .product-price {
@@ -401,21 +485,87 @@ h3 { font-size: 1.2rem; }
 .image-status {
   min-height: 1.1em;
   color: var(--ink-soft);
+  display: block;
+  margin-top: 8px;
 }
 
-.image-preview {
-  margin: 4px 0 18px;
-  width: 160px;
-  height: 160px;
-  border-radius: 12px;
+/* SIZE CHECKBOXES (admin form) */
+.size-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.size-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: white;
+  border: 1.5px solid rgba(184, 147, 207, 0.5);
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.size-check:has(input:checked) {
+  background: rgba(214, 138, 122, 0.15);
+  border-color: var(--garnet);
+  color: var(--garnet);
+}
+.size-check input { margin: 0; }
+
+/* IMAGE ROWS (admin form) */
+.image-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.image-row {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 14px;
+  align-items: center;
+  background: white;
+  border: 1.5px dashed rgba(184, 147, 207, 0.5);
+  border-radius: 10px;
+  padding: 10px;
+}
+.image-row-thumb {
+  width: 88px; height: 88px;
+  border-radius: 8px;
   overflow: hidden;
   background: linear-gradient(135deg, var(--lav-soft) 0%, var(--lav-deep) 100%);
-  box-shadow: var(--shadow-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.image-preview img {
-  width: 100%; height: 100%;
-  object-fit: cover;
-  display: block;
+.image-row-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.image-row-empty {
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 700;
+  font-size: 1.6rem;
+  color: rgba(251, 246, 232, 0.85);
+}
+.image-row-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.image-row-controls .image-row-url {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1.5px solid rgba(184, 147, 207, 0.5);
+  border-radius: 6px;
+  background: white;
+  color: var(--ink);
+}
+.image-row-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .tshirt-list {

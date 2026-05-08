@@ -52,21 +52,54 @@
       });
 
     function renderCard(t) {
+      t = normalize(t);
       const initial = (t.name || "?").charAt(0).toUpperCase();
-      const img = t.image
-        ? `<img src="${escapeHtml(t.image)}" alt="${escapeHtml(t.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">`
-        + `<div class="placeholder" style="display:none">${escapeHtml(initial)}</div>`
-        : `<div class="placeholder">${escapeHtml(initial)}</div>`;
-      const unavail = !t.available
+      const cover = t.images[0] || "";
+      const hover = t.images[1] || "";
+
+      let imgHtml;
+      if (cover) {
+        imgHtml = `<img class="card-image-primary" src="${escapeHtml(cover)}" alt="${escapeHtml(t.name)}" onerror="this.style.display='none';this.parentElement.querySelector('.placeholder').style.display='flex';">`;
+        if (hover) {
+          imgHtml += `<img class="card-image-hover" src="${escapeHtml(hover)}" alt="" onerror="this.style.display='none'">`;
+        }
+        imgHtml += `<div class="placeholder" style="display:none">${escapeHtml(initial)}</div>`;
+      } else {
+        imgHtml = `<div class="placeholder">${escapeHtml(initial)}</div>`;
+      }
+
+      const unavail = !t.anyAvailable
         ? '<span class="card-unavailable">Out of stock</span>' : '';
       return `
         <a class="card" href="product.html?id=${encodeURIComponent(t.id)}">
-          <div class="card-image">${img}</div>
+          <div class="card-image">${imgHtml}</div>
           <div class="card-name">${escapeHtml(t.name || "")}</div>
           <div class="card-price">£${formatPrice(t.price)}</div>
           ${unavail}
         </a>
       `;
+    }
+
+    /* Normalise old + new schemas into one shape:
+       { images: [], sizes: {S,M,L,XL,XXL booleans}, anyAvailable: bool }.
+       Keeps the renderer simple and lets old data (image: "x", available: true)
+       keep working without a migration. */
+    function normalize(t) {
+      const images = (Array.isArray(t.images) && t.images.length)
+        ? t.images.filter(x => x)
+        : (t.image ? [t.image] : []);
+      let sizes;
+      if (t.sizes && typeof t.sizes === "object") {
+        sizes = {
+          S:   !!t.sizes.S,   M:   !!t.sizes.M,   L:   !!t.sizes.L,
+          XL:  !!t.sizes.XL,  XXL: !!t.sizes.XXL,
+        };
+      } else {
+        const a = t.available !== false;
+        sizes = { S: a, M: a, L: a, XL: a, XXL: a };
+      }
+      const anyAvailable = Object.values(sizes).some(v => v);
+      return { ...t, images, sizes, anyAvailable };
     }
 
     function formatPrice(p) {
