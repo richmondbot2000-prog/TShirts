@@ -63,7 +63,7 @@
         <a class="card" href="product.html?id=${encodeURIComponent(t.id)}">
           <div class="card-image">${img}</div>
           <div class="card-name">${escapeHtml(t.name || "")}</div>
-          <div class="card-price">$${formatPrice(t.price)}</div>
+          <div class="card-price">£${formatPrice(t.price)}</div>
           ${unavail}
         </a>
       `;
