@@ -5,8 +5,18 @@
       "name": "Hamilton T Shirt",
       "price": 20,
       "description": "Beautiful Hamilton tribute Tshirt designed by Juliette Benamor",
-      "image": "images/hamilton-t-shirt-1778233531357.jpg",
-      "available": true
+      "images": [
+        "images/hamilton-t-shirt-1778233531357.jpg",
+        "images/hamilton-t-shirt-1778234686424.jpg",
+        "images/hamilton-t-shirt-1778234708262.jpg"
+      ],
+      "sizes": {
+        "S": true,
+        "M": true,
+        "L": true,
+        "XL": true,
+        "XXL": true
+      }
     },
     {
       "id": "crystal-wings",
