@@ -4,11 +4,11 @@
       "id": "hairspray",
       "name": "Hairspray",
       "price": 20,
-      "description": "HAIRSPRAY!",
+      "description": "HAIRSPRAY! It's Hairspray. It's the best one!",
       "images": [
-        "images/hairspray-1778236203581.jpg",
-        "images/hairspray-1778236217563.jpg",
-        "images/hairspray-1778236228762.jpg"
+        "images/hairspray-1778236318560.jpg",
+        "images/hairspray-1778236332517.jpg",
+        "images/hairspray-1778236343784.jpg"
       ],
       "sizes": {
         "S": true,
